@@ -1,0 +1,121 @@
+services:
+  db:
+    container_name: db
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: northwind
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgresql_bin:/usr/lib/postgresql
+      - postgresql_data:/var/lib/postgresql/data
+      - ./northwind.sql:/docker-entrypoint-initdb.d/northwind.sql
+      - ./files:/files
+    ports:
+      - 55432:5432
+    networks:
+      - blog-network
+    labels:
+      - "com.docker.compose.project=blog"
+      - "com.docker.compose.service=db"
+      - "com.weave.scope.team=backend"
+      - "com.weave.scope.role=database"
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: pgadmin4@pgadmin.org
+      PGADMIN_DEFAULT_PASSWORD: postgres
+      PGADMIN_LISTEN_PORT: 5050
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_DEFAULT_SERVER: db
+    volumes:
+      - postgresql_bin:/usr/lib/postgresql
+      - pgadmin_root_prefs:/root/.pgadmin
+      - pgadmin_working_dir:/var/lib/pgadmin
+      - ./files:/files
+    ports:
+      - 5050:5050
+    networks:
+      - blog-network
+    depends_on:
+      - db
+    command: >
+      bash -c "
+      until pg_isready -h db -p 5432; do
+        echo 'Waiting for db...';
+        sleep 2;
+      done;
+      echo 'Database is ready';
+      exec /entrypoint.sh pgadmin4
+      "
+    labels:
+      - "com.docker.compose.project=blog"
+      - "com.docker.compose.service=pgadmin"
+      - "com.weave.scope.team=frontend"
+      - "com.weave.scope.role=admin-tool"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+    networks:
+      - blog-network
+    labels:
+      - "com.docker.compose.project=blog"
+      - "com.docker.compose.service=portainer"
+      - "com.weave.scope.role=management-tool"
+
+  weave-scope:
+    image: weaveworks/scope:1.13.2
+    container_name: weave-scope
+    restart: unless-stopped
+    privileged: true
+    pid: "host"
+    ports:
+      - "4040:4040"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+    environment:
+      - SCOPE_HOSTNAME=weave-scope
+    command:
+      - "--probe.docker=true"
+      - "--probe.docker.bridge=docker0"
+      - "--probe.processes=true"
+      - "--probe.proc.spy=true"
+      - "--probe.spy.interval=2s"
+      - "--app.weave.addr=127.0.0.1:4040"
+      - "--weave=false"
+    networks:
+      - blog-network
+    labels:
+      - "com.docker.compose.project=blog"
+      - "com.docker.compose.service=weave-scope"
+      - "com.weave.scope.role=visualization-tool"
+
+networks:
+  blog-network:
+    driver: bridge
+
+volumes:
+  pgadmin_root_prefs:
+    driver: local
+  pgadmin_working_dir:
+    driver: local
+  postgresql_data:
+    driver: local
+  postgresql_bin:
+    driver: local
+  portainer_data:
+    driver: local
